@@ -1410,7 +1410,7 @@ class MultKAN(nn.Module):
             
     def fit(self, dataset, opt="LBFGS", steps=100, log=1, lamb=0., lamb_l1=1., lamb_entropy=2., lamb_coef=0., lamb_coefdiff=0., update_grid=True, grid_update_num=10, loss_fn=None, lr=1.,start_grid_update_step=-1, stop_grid_update_step=50, batch=-1,
               metrics=None, save_fig=False, in_vars=None, out_vars=None, beta=3, save_fig_freq=1, img_folder='./video', singularity_avoiding=False, y_th=1000., reg_metric='edge_forward_spline_n', display_metrics=None, do_test=False,
-              do_early_stopping=True, patience=5, min_delta=1e-6, do_restore_best=True):
+              do_early_stopping=False, patience=10, min_delta=1e-6, do_restore_best=True):
         '''
         training
 
@@ -1547,7 +1547,7 @@ class MultKAN(nn.Module):
                 os.makedirs(img_folder)
 
         # early stopping state
-        best_train_loss = None
+        best_train_loss = -1
         if do_early_stopping:
             if 'val_input' not in dataset or 'val_label' not in dataset:
                 raise ValueError('Dataset needs to have val_input and val_label')
@@ -1649,7 +1649,14 @@ class MultKAN(nn.Module):
 
             if _ % log == 0:
                 if display_metrics == None:
-                    pbar.set_description("| train_loss: %.2e | test_loss: %.2e | reg: %.2e | " % (torch.sqrt(train_loss).cpu().detach().numpy(), torch.sqrt(test_loss).cpu().detach().numpy() if do_test else 0, reg_.cpu().detach().numpy()))
+                    pbar.set_description(
+                        "| train_loss: %.2e | val_loss: %.2e | test_loss: %.2e | reg: %.2e | " % (
+                            torch.sqrt(train_loss).cpu().detach().numpy(),
+                            torch.sqrt(val_loss).cpu().detach().numpy() if do_early_stopping else 0,
+                            torch.sqrt(test_loss).cpu().detach().numpy() if do_test else 0,
+                            reg_.cpu().detach().numpy()
+                        )
+                    )
                 else:
                     string = ''
                     data = ()
@@ -1669,9 +1676,8 @@ class MultKAN(nn.Module):
                 plt.close()
                 self.save_act = save_act
 
-        if best_train_loss is not None:
-            results["best_train_loss"] = best_train_loss
         if best_val_loss is not None:
+            results["best_train_loss"] = best_train_loss
             results["best_val_loss"] = best_val_loss
 
         self.log_history('fit')
