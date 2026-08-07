@@ -1546,12 +1546,15 @@ class MultKAN(nn.Module):
                 os.makedirs(img_folder)
 
         # early stopping state
+        best_train_loss = None
         if do_early_stopping:
             if 'val_input' not in dataset or 'val_label' not in dataset:
                 raise ValueError('Dataset needs to have val_input and val_label')
-            best_loss = float('inf')
+            best_val_loss = float('inf')
             best_state = None
             patience_counter = 0
+        else:
+            best_val_loss = None
 
         for _ in pbar:
             
@@ -1618,9 +1621,11 @@ class MultKAN(nn.Module):
             results['reg'].append(reg_.cpu().detach().numpy())
 
             if do_early_stopping:
+                current_train_loss = torch.sqrt(train_loss).cpu().detach().item()
                 current_val_loss = torch.sqrt(val_loss).cpu().detach().item()
 
                 if current_val_loss < best_val_loss - min_delta:
+                    best_train_loss = current_train_loss
                     best_val_loss = current_val_loss
                     patience_counter = 0
 
@@ -1661,6 +1666,11 @@ class MultKAN(nn.Module):
                 plt.savefig(img_folder + '/' + str(_) + '.jpg', bbox_inches='tight', dpi=200)
                 plt.close()
                 self.save_act = save_act
+
+        if best_train_loss is not None:
+            results["best_train_loss"] = best_train_loss
+        if best_val_loss is not None:
+            results["best_val_loss"] = best_val_loss
 
         self.log_history('fit')
         # revert back to original state
