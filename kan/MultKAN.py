@@ -1409,7 +1409,8 @@ class MultKAN(nn.Module):
         
             
     def fit(self, dataset, opt="LBFGS", steps=100, log=1, lamb=0., lamb_l1=1., lamb_entropy=2., lamb_coef=0., lamb_coefdiff=0., update_grid=True, grid_update_num=10, loss_fn=None, lr=1.,start_grid_update_step=-1, stop_grid_update_step=50, batch=-1,
-              metrics=None, save_fig=False, in_vars=None, out_vars=None, beta=3, save_fig_freq=1, img_folder='./video', singularity_avoiding=False, y_th=1000., reg_metric='edge_forward_spline_n', display_metrics=None, do_test=False):
+              metrics=None, save_fig=False, in_vars=None, out_vars=None, beta=3, save_fig_freq=1, img_folder='./video', singularity_avoiding=False, y_th=1000., reg_metric='edge_forward_spline_n', display_metrics=None, do_test=False,
+              do_early_stopping=True, patience=5, min_delta=1e-6, do_restore_best=True):
         '''
         training
 
@@ -1459,7 +1460,14 @@ class MultKAN(nn.Module):
                 the metrics to be computed in training
             display_metrics : a list of functions
                 the metric to be displayed in tqdm progress bar
-            do_test: bool, True if we want to test, False otherwise
+            do_test: bool
+                True if we want to test, False otherwise
+            do_early_stopping: bool
+                True if we want to early stop, False otherwise. if True, dataset must have 'val_input' and 'val_label'
+            patience: int
+                how patient we are before stopping
+            min_delta: float
+                the minimum amount of change required 
 
         Returns:
         --------
@@ -1537,6 +1545,14 @@ class MultKAN(nn.Module):
             if not os.path.exists(img_folder):
                 os.makedirs(img_folder)
 
+        # early stopping state
+        if do_early_stopping:
+            if 'val_input' not in dataset or 'val_label' not in dataset:
+                raise ValueError('Dataset needs to have val_input and val_label')
+            best_loss = float('inf')
+            best_state = None
+            patience_counter = 0
+
         for _ in pbar:
             
             if _ == steps-1 and old_save_act:
@@ -1572,8 +1588,19 @@ class MultKAN(nn.Module):
                 loss.backward()
                 optimizer.step()
 
+            if do_early_stopping:
+                with torch.no_grad():
+                    val_loss = loss_fn_eval(
+                        self.forward(dataset['val_input'], singularity_avoiding=singularity_avoiding, y_th=y_th),
+                        dataset['val_label']
+                    )
+
             if do_test:
-                test_loss = loss_fn_eval(self.forward(dataset['test_input'][test_id]), dataset['test_label'][test_id])
+                with torch.no_grad():
+                    test_loss = loss_fn_eval(
+                        self.forward(dataset['test_input'][test_id]),
+                        dataset['test_label'][test_id]
+                    )
             
             
             if metrics != None:
@@ -1581,9 +1608,37 @@ class MultKAN(nn.Module):
                     results[metrics[i].__name__].append(metrics[i]().item())
 
             results['train_loss'].append(torch.sqrt(train_loss).cpu().detach().numpy())
+
+            if do_early_stopping:
+                results['val_loss'].append(torch.sqrt(val_loss).cpu().detach().numpy())
+
             if do_test:
                 results['test_loss'].append(torch.sqrt(test_loss).cpu().detach().numpy())
+
             results['reg'].append(reg_.cpu().detach().numpy())
+
+            if do_early_stopping:
+                current_val_loss = torch.sqrt(val_loss).cpu().detach().item()
+
+                if current_val_loss < best_val_loss - min_delta:
+                    best_val_loss = current_val_loss
+                    patience_counter = 0
+
+                    if do_restore_best:
+                        best_state = copy.deepcopy(self.state_dict())
+                else:
+                    patience_counter += 1
+
+                if patience_counter >= patience:
+                    print(
+                        f"Early stopping at step {_}. "
+                        f"Best val_loss: {best_val_loss:.4e}"
+                    )
+
+                    if do_restore_best and best_state is not None:
+                        self.load_state_dict(best_state)
+
+                    break
 
             if _ % log == 0:
                 if display_metrics == None:
