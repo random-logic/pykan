@@ -3,8 +3,8 @@ requires = ["setuptools==65.5.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kan"
-version = "0.2.1"
+name = "pykan"
+version = "0.2.8.1a0"
 description = "random-logic unofficial Kolmogorov-Arnold Network package"
 readme = "README.md"
 requires-python = ">=3.9.7,<3.12"
