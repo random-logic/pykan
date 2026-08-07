@@ -1554,6 +1554,7 @@ class MultKAN(nn.Module):
             best_val_loss = float('inf')
             best_state = None
             patience_counter = 0
+            results['val_loss'] = []
         else:
             best_val_loss = None
 
