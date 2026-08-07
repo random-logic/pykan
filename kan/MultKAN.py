@@ -1517,7 +1517,8 @@ class MultKAN(nn.Module):
 
         if batch == -1 or batch > dataset['train_input'].shape[0]:
             batch_size = dataset['train_input'].shape[0]
-            batch_size_test = dataset['test_input'].shape[0]
+            if do_test:
+                batch_size_test = dataset['test_input'].shape[0]
         else:
             batch_size = batch
             batch_size_test = batch
